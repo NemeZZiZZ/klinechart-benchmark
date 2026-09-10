@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bundle-size: lightweight-charts</title>
+  </head>
+  <body>
+    <div id="chart" style="width: 800px; height: 400px"></div>
+    <script type="module">
+      import { CandlestickSeries, createChart } from 'lightweight-charts'
+
+      const container = document.getElementById('chart')
+      const count = 1000
+      const rows = []
+      let close = 100
+      for (let i = 0; i < count; i += 1) {
+        const open = close
+        close = Math.max(1, open + (Math.random() - 0.5) * 2)
+        rows.push({
+          time: 1577836800 + i * 60,
+          open,
+          close,
+          high: Math.max(open, close) + Math.random(),
+          low: Math.min(open, close) - Math.random()
+        })
+      }
+      const chart = createChart(container, { width: 800, height: 400, autoSize: false })
+      const series = chart.addSeries(CandlestickSeries, {})
+      series.setData(rows)
+    </script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bundle-size: klinecharts</title>
+  </head>
+  <body>
+    <div id="chart" style="width: 800px; height: 400px"></div>
+    <script type="module">
+      import { init } from 'klinecharts'
+
+      const container = document.getElementById('chart')
+      const count = 1000
+      const data = []
+      let close = 100
+      for (let i = 0; i < count; i += 1) {
+        const open = close
+        close = Math.max(1, open + (Math.random() - 0.5) * 2)
+        data.push({
+          timestamp: 1577836800000 + i * 60000,
+          open,
+          close,
+          high: Math.max(open, close) + Math.random(),
+          low: Math.min(open, close) - Math.random(),
+          volume: 1000
+        })
+      }
+      const chart = init(container)
+      chart.setSymbol({ ticker: 'SIZE' })
+      chart.setPeriod({ span: 1, type: 'minute' })
+      chart.setDataLoader({
+        getBars: ({ callback }) => {
+          callback(data, { forward: false, backward: false })
+        }
+      })
+    </script>
+  </body>
+</html>

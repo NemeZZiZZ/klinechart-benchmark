@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bundle-size: echarts</title>
+  </head>
+  <body>
+    <div id="chart" style="width: 800px; height: 400px"></div>
+    <script type="module">
+      import * as echarts from 'echarts'
+
+      const container = document.getElementById('chart')
+      const count = 1000
+      const candleData = []
+      let close = 100
+      for (let i = 0; i < count; i += 1) {
+        const open = close
+        close = Math.max(1, open + (Math.random() - 0.5) * 2)
+        candleData.push([open, close, Math.min(open, close) - Math.random(), Math.max(open, close) + Math.random()])
+      }
+      const chart = echarts.init(container, null, { renderer: 'canvas', width: 800, height: 400 })
+      chart.setOption({
+        animation: false,
+        xAxis: { type: 'category', data: candleData.map((_, index) => String(index)) },
+        yAxis: { type: 'value', scale: true },
+        series: [{ type: 'candlestick', data: candleData }]
+      })
+    </script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "klinechart-benchmark",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "lint": "biome check . --assist-enabled=false",
+    "type-check": "tsc --noEmit",
+    "run": "node scripts/run.mjs",
+    "size": "node scripts/size.mjs"
+  },
+  "dependencies": {
+    "echarts": "6.1.0",
+    "klinecharts": "10.0.3",
+    "lightweight-charts": "5.2.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.4",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.20.2",
+    "playwright": "^1.55.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.2.0"
+  }
+}

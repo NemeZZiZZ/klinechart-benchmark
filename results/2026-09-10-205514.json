@@ -1,0 +1,188 @@
+{
+  "meta": {
+    "date": "2026-09-10T18:55:14.078Z",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "versions": {
+      "klinecharts": "10.0.3",
+      "lightweight-charts": "5.2.1",
+      "echarts": "6.1.0"
+    }
+  },
+  "results": {
+    "initialRender": {
+      "5000": {
+        "klinecharts": 9.400000005960464,
+        "lightweight-charts": 16.099999994039536,
+        "echarts": 8.399999991059303
+      },
+      "10000": {
+        "klinecharts": 9.700000002980232,
+        "lightweight-charts": 22.5,
+        "echarts": 10.5
+      },
+      "20000": {
+        "klinecharts": 9.200000002980232,
+        "lightweight-charts": 38.8999999910593,
+        "echarts": 13.899999991059303
+      },
+      "50000": {
+        "klinecharts": 9.200000002980232,
+        "lightweight-charts": 100.80000001192093,
+        "echarts": 31.200000002980232
+      },
+      "100000": {
+        "klinecharts": 9.399999991059303,
+        "lightweight-charts": 204.79999999701977,
+        "echarts": 58.900000005960464
+      },
+      "200000": {
+        "klinecharts": 9.5,
+        "lightweight-charts": 448.5,
+        "echarts": 108
+      }
+    },
+    "fullUpdate": {
+      "5000": {
+        "klinecharts": 8.900000005960464,
+        "lightweight-charts": 10.099999994039536,
+        "echarts": 9.200000002980232
+      },
+      "10000": {
+        "klinecharts": 8.300000011920929,
+        "lightweight-charts": 15.299999997019768,
+        "echarts": 8.299999997019768
+      },
+      "20000": {
+        "klinecharts": 8.5,
+        "lightweight-charts": 33.400000005960464,
+        "echarts": 12.299999997019768
+      },
+      "50000": {
+        "klinecharts": 8.5,
+        "lightweight-charts": 86.69999998807907,
+        "echarts": 28.899999991059303
+      },
+      "100000": {
+        "klinecharts": 8.400000005960464,
+        "lightweight-charts": 173.30000001192093,
+        "echarts": 49.5
+      },
+      "200000": {
+        "klinecharts": 8.399999991059303,
+        "lightweight-charts": 345.5,
+        "echarts": 271.29999999701977
+      }
+    },
+    "tickUpdates": {
+      "5000": {
+        "klinecharts": 0.0175,
+        "lightweight-charts": 0.055400000005960466,
+        "echarts": 4.2998000000119205
+      },
+      "10000": {
+        "klinecharts": 0.016599999994039535,
+        "lightweight-charts": 0.09340000000596047,
+        "echarts": 6.749899999991059
+      },
+      "20000": {
+        "klinecharts": 0.0165,
+        "lightweight-charts": 0.18229999999701976,
+        "echarts": 11.6215
+      },
+      "50000": {
+        "klinecharts": 0.016599999994039535,
+        "lightweight-charts": 0.4492000000029802,
+        "echarts": 27.01679999999702
+      },
+      "100000": {
+        "klinecharts": 0.016599999994039535,
+        "lightweight-charts": 0.886,
+        "echarts": 52.96070000000298
+      },
+      "200000": {
+        "klinecharts": 0.0165,
+        "lightweight-charts": 1.9233999999910594,
+        "echarts": 105.67009999999404
+      }
+    },
+    "fpsPanZoom": {
+      "5000": {
+        "klinecharts": 119.8298416250353,
+        "lightweight-charts": 119.78199676602861,
+        "echarts": 119.78917105900754
+      },
+      "10000": {
+        "klinecharts": 119.80113012406545,
+        "lightweight-charts": 115.00908491910285,
+        "echarts": 119.00245592323836
+      },
+      "20000": {
+        "klinecharts": 28.699324934102464,
+        "lightweight-charts": 119.79634621144055,
+        "echarts": 117.38401341524597
+      },
+      "50000": {
+        "klinecharts": 20.81681205391008,
+        "lightweight-charts": 119.70662882937039,
+        "echarts": 110.61195966856344
+      },
+      "100000": {
+        "klinecharts": 15.12961792069031,
+        "lightweight-charts": 119.38089905622216,
+        "echarts": 88.85427898268026
+      },
+      "200000": {
+        "klinecharts": 10.197350708095309,
+        "lightweight-charts": 120.06552661033955,
+        "echarts": 79.92646764985741
+      }
+    },
+    "heapDelta": {
+      "5000": {
+        "klinecharts": 87120,
+        "lightweight-charts": 2825688,
+        "echarts": 2702051
+      },
+      "10000": {
+        "klinecharts": 70000,
+        "lightweight-charts": 5709256,
+        "echarts": 5919867
+      },
+      "20000": {
+        "klinecharts": 733245,
+        "lightweight-charts": 11397248,
+        "echarts": 11178631
+      },
+      "50000": {
+        "klinecharts": 711541,
+        "lightweight-charts": 27515556,
+        "echarts": 24206759
+      },
+      "100000": {
+        "klinecharts": 700221,
+        "lightweight-charts": 75403510,
+        "echarts": 38999779
+      },
+      "200000": {
+        "klinecharts": 705817,
+        "lightweight-charts": 108915266,
+        "echarts": 78933215
+      }
+    }
+  },
+  "bundleSize": {
+    "echarts": {
+      "raw": 1117672,
+      "gzip": 366981
+    },
+    "klinecharts": {
+      "raw": 222581,
+      "gzip": 57064
+    },
+    "lightweight-charts": {
+      "raw": 161903,
+      "gzip": 51620
+    }
+  }
+}
