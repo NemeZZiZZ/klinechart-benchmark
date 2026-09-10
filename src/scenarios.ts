@@ -169,6 +169,8 @@ export async function measureHeapDelta(adapter: ChartAdapter, container: HTMLEle
   const handle = adapter.create(container, data)
   await settledFrame()
   await new Promise((resolve) => setTimeout(resolve, 500))
+  gcWindow.gc?.()
+  await new Promise((resolve) => setTimeout(resolve, 100))
   const after = readHeap()
   handle.destroy()
   return after - before

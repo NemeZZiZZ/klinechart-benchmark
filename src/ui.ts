@@ -118,11 +118,11 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
     for (const volume of volumes) {
       const row = bench.results[scenario]?.[String(volume)] ?? {}
       const values = adapters.map((adapter) => row[adapter.name])
-      const best = pickBest(values, meta.higherIsBetter)
+      const marks = pickBest(scenario, values, meta.higherIsBetter)
       const tr = document.createElement('tr')
       const cells = [`<td>${volume.toLocaleString('en-US')}</td>`]
       adapters.forEach((_adapter, index) => {
-        cells.push(`<td class="${values[index] === best && best !== null ? 'best' : ''}">${formatValue(scenario, values[index])}</td>`)
+        cells.push(`<td class="${marks[index] ? 'best' : ''}">${formatValue(scenario, values[index])}</td>`)
       })
       tr.innerHTML = cells.join('')
       table.appendChild(tr)
@@ -148,12 +148,36 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
   root.appendChild(actions)
 }
 
-function pickBest(values: Array<number | null | undefined>, higherIsBetter: boolean): number | null {
-  const present = values.filter((value): value is number => typeof value === 'number')
-  if (present.length === 0) {
-    return null
+function displayValue(scenario: ScenarioName, value: number): number {
+  if (scenario === 'heapDelta') {
+    return Math.round((value / 1024 / 1024) * 10) / 10
   }
-  return higherIsBetter ? Math.max(...present) : Math.min(...present)
+  const digits = formatDigits(scenario)
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
+}
+
+function formatDigits(scenario: ScenarioName): number {
+  if (scenario === 'fpsPanZoom') {
+    return 0
+  }
+  if (scenario === 'tickUpdates') {
+    return 4
+  }
+  return 1
+}
+
+function pickBest(scenario: ScenarioName, values: Array<number | null | undefined>, higherIsBetter: boolean): boolean[] {
+  const displayed = values.map((value) => (typeof value === 'number' ? displayValue(scenario, value) : null))
+  const present = displayed.filter((value): value is number => value !== null)
+  if (present.length < 2) {
+    return values.map(() => false)
+  }
+  const best = higherIsBetter ? Math.max(...present) : Math.min(...present)
+  if (!present.some((value) => value !== best)) {
+    return values.map(() => false)
+  }
+  return displayed.map((value) => value === best)
 }
 
 function formatValue(scenario: ScenarioName, value: number | null | undefined): string {
@@ -163,11 +187,5 @@ function formatValue(scenario: ScenarioName, value: number | null | undefined): 
   if (scenario === 'heapDelta') {
     return `${(value / 1024 / 1024).toFixed(1)} MB`
   }
-  if (scenario === 'fpsPanZoom') {
-    return value.toFixed(0)
-  }
-  if (scenario === 'tickUpdates') {
-    return value.toFixed(4)
-  }
-  return value.toFixed(1)
+  return value.toFixed(formatDigits(scenario))
 }

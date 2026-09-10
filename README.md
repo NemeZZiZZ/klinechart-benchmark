@@ -16,7 +16,7 @@ Reproducible performance comparison of three charting libraries rendering the sa
 | `fullUpdate` | replacing the whole dataset on a live chart, median of 5 | ms |
 | `tickUpdates` | 1000 sequential updates of the last candle | ms per tick |
 | `fpsPanZoom` | average FPS over 5s of synthetic pointer pan + wheel zoom | fps |
-| `heapDelta` | JS heap growth after loading a chart with N bars (Chromium only) | MB |
+| `heapDelta` | retained JS heap growth after loading a chart with N bars; forced GC before both snapshots when available (Chromium only) | MB |
 | `bundleSize` | production Vite build of a minimal one-chart page, raw + gzip | bytes |
 
 ## Fairness rules
@@ -56,7 +56,7 @@ KLINE_BENCH_LOCAL=../KLineChart/src/index.ts pnpm run
 ## Environment requirements
 
 - Node.js 22+, pnpm.
-- `heapDelta` requires Chromium with `--enable-precise-memory-info`; the Playwright runner passes this automatically. The column shows `—` in browsers without `performance.memory`.
+- `heapDelta` requires Chromium with `--enable-precise-memory-info`; the Playwright runner passes this automatically (plus `--js-flags=--expose-gc`). The column shows `—` in browsers without `performance.memory`. Without an exposed `gc()` the numbers are noisier and can occasionally go negative when the browser collects garbage mid-measurement.
 - For publishable FPS numbers run headed (`pnpm run` without `--headless`) on a quiet machine, no other load, charger plugged in on laptops.
 
 ## Results format
