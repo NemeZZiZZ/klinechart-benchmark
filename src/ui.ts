@@ -59,38 +59,90 @@ export function setupUI(): void {
   status.textContent = 'Charts are measured offscreen in fixed 800×400 containers — see README for methodology.'
   controls.appendChild(status)
 
+  const progress = document.createElement('div')
+  progress.id = 'progress'
+  progress.style.display = 'none'
+  const progressFill = document.createElement('div')
+  progressFill.id = 'progress-fill'
+  progress.appendChild(progressFill)
+  controls.appendChild(progress)
+
   runButton.addEventListener('click', () => {
-    void runFromUI(status, runButton, results)
+    void runFromUI(status, runButton, results, progress, progressFill)
   })
 }
 
-async function runFromUI(status: HTMLElement, runButton: HTMLButtonElement, results: HTMLElement): Promise<void> {
+async function runFromUI(status: HTMLElement, runButton: HTMLButtonElement, results: HTMLElement, progress: HTMLElement, progressFill: HTMLElement): Promise<void> {
   const selected = [...document.querySelectorAll<HTMLInputElement>('#controls input[type=checkbox]:checked')].map((checkbox) => Number(checkbox.value)).sort((a, b) => a - b)
   if (selected.length === 0) {
     status.textContent = 'Select at least one volume.'
     return
   }
   runButton.disabled = true
-  results.innerHTML = ''
+  const refs = renderSkeleton(results, selected)
+  progress.style.display = ''
+  progressFill.style.width = '0%'
   status.textContent = 'Running…'
   try {
     const bench = await runBenchmark({
       volumes: selected,
-      onProgress: (message) => {
+      onProgress: (message, progressInfo) => {
         status.textContent = `Running… ${message}`
+        if (progressInfo !== undefined) {
+          const percent = Math.round((progressInfo.done / progressInfo.total) * 100)
+          progressFill.style.width = `${percent}%`
+          status.textContent = `Running… ${message} (${percent}%)`
+        }
+      },
+      onPartial: (partial, updated) => {
+        if (updated !== undefined) {
+          updateRow(refs, partial, updated.scenario, updated.volume)
+        }
       }
     })
     status.textContent = 'Done.'
-    renderResults(results, bench)
+    finalizeTables(refs)
+    appendDownloadAction(results, bench)
   } catch (error) {
     status.textContent = `Failed: ${error instanceof Error ? error.message : String(error)}`
+    finalizeTables(refs)
   } finally {
+    progress.style.display = 'none'
     runButton.disabled = false
   }
 }
 
-function renderResults(root: HTMLElement, bench: BenchResults): void {
+interface TableRefs {
+  rows: Map<string, HTMLTableRowElement>
+  heapRows: Map<string, HTMLTableRowElement>
+}
+
+// Build every table up front with empty value cells; measurements then fill
+// the cells in one by one, so progress is visible while the run continues.
+function renderSkeleton(root: HTMLElement, volumes: number[]): TableRefs {
   root.innerHTML = ''
+  const rows = new Map<string, HTMLTableRowElement>()
+  const heapRows = new Map<string, HTMLTableRowElement>()
+
+  const appendTable = (scenario: string, target: Map<string, HTMLTableRowElement>): void => {
+    const table = document.createElement('table')
+    const headerRow = document.createElement('tr')
+    headerRow.innerHTML = `<th>Volume</th>${adapters.map((adapter) => `<th>${adapter.name}</th>`).join('')}`
+    table.appendChild(headerRow)
+    for (const volume of volumes) {
+      const tr = document.createElement('tr')
+      const volumeCell = document.createElement('td')
+      volumeCell.textContent = volume.toLocaleString('en-US')
+      tr.appendChild(volumeCell)
+      for (const _adapter of adapters) {
+        const td = document.createElement('td')
+        tr.appendChild(td)
+      }
+      table.appendChild(tr)
+      target.set(`${scenario}:${volume}`, tr)
+    }
+    root.appendChild(table)
+  }
 
   for (const scenario of SCENARIO_NAMES) {
     const meta = SCENARIO_LABELS[scenario]
@@ -103,31 +155,73 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
     note.textContent = `Unit: ${meta.unit}.`
     root.appendChild(note)
 
-    const table = document.createElement('table')
-    const headerRow = document.createElement('tr')
-    headerRow.innerHTML = `<th>Volume</th>${adapters.map((adapter) => `<th>${adapter.name}</th>`).join('')}`
-    table.appendChild(headerRow)
-
-    const volumes = Object.keys(bench.results[scenario] ?? {})
-      .map(Number)
-      .sort((a, b) => a - b)
-    for (const volume of volumes) {
-      const row = bench.results[scenario]?.[String(volume)] ?? {}
-      const values = adapters.map((adapter) => row[adapter.name])
-      const marks = pickBest(scenario, values, meta.higherIsBetter)
-      const tr = document.createElement('tr')
-      const cells = [`<td>${volume.toLocaleString('en-US')}</td>`]
-      adapters.forEach((_adapter, index) => {
-        cells.push(`<td class="${marks[index] ? 'best' : ''}">${formatValue(scenario, values[index])}</td>`)
-      })
-      tr.innerHTML = cells.join('')
-      table.appendChild(tr)
-    }
-    root.appendChild(table)
+    appendTable(scenario, rows)
   }
 
-  renderHeapPerBar(root, bench)
+  const heading = document.createElement('h2')
+  heading.textContent = 'Heap per bar'
+  root.appendChild(heading)
 
+  const note = document.createElement('p')
+  note.className = 'unit-note'
+  note.textContent = 'Unit: KB per bar (derived: heapDelta ÷ volume).'
+  root.appendChild(note)
+
+  appendTable('heapPerBar', heapRows)
+
+  return { rows, heapRows }
+}
+
+function updateRow(refs: TableRefs, partial: BenchResults['results'], scenario: ScenarioName, volume: number): void {
+  const tr = refs.rows.get(`${scenario}:${volume}`)
+  if (tr === undefined) {
+    return
+  }
+  const meta = SCENARIO_LABELS[scenario]
+  const row = partial[scenario]?.[String(volume)] ?? {}
+  const values = adapters.map((adapter) => row[adapter.name])
+  const marks = pickBest(scenario, values, meta.higherIsBetter)
+  adapters.forEach((_adapter, index) => {
+    const td = tr.children[index + 1]
+    if (td !== undefined) {
+      td.textContent = formatValue(scenario, values[index])
+      td.className = marks[index] ? 'best' : ''
+    }
+  })
+
+  if (scenario === 'heapDelta') {
+    const heapTr = refs.heapRows.get(`heapPerBar:${volume}`)
+    if (heapTr !== undefined) {
+      const perBar = adapters.map((adapter) => {
+        const heap = row[adapter.name]
+        return typeof heap === 'number' ? heap / volume / 1024 : null
+      })
+      const present = perBar.filter((value): value is number => value !== null)
+      const best = present.length > 1 && new Set(present.map((value) => value.toFixed(2))).size > 1 ? Math.min(...present) : null
+      adapters.forEach((_adapter, index) => {
+        const td = heapTr.children[index + 1]
+        if (td !== undefined) {
+          const value = perBar[index]
+          const isBest = best !== null && value !== null && value.toFixed(2) === best.toFixed(2)
+          td.textContent = value === null ? '—' : `${value.toFixed(2)} KB`
+          td.className = isBest ? 'best' : ''
+        }
+      })
+    }
+  }
+}
+
+function finalizeTables(refs: TableRefs): void {
+  for (const tr of [...refs.rows.values(), ...refs.heapRows.values()]) {
+    for (const td of tr.children) {
+      if (td.textContent === '') {
+        td.textContent = '—'
+      }
+    }
+  }
+}
+
+function appendDownloadAction(root: HTMLElement, bench: BenchResults): void {
   const actions = document.createElement('div')
   actions.className = 'actions'
   const download = document.createElement('button')
@@ -144,44 +238,6 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
   })
   actions.appendChild(download)
   root.appendChild(actions)
-}
-
-function renderHeapPerBar(root: HTMLElement, bench: BenchResults): void {
-  const heading = document.createElement('h2')
-  heading.textContent = 'Heap per bar'
-  root.appendChild(heading)
-
-  const note = document.createElement('p')
-  note.className = 'unit-note'
-  note.textContent = 'Unit: KB per bar (derived: heapDelta ÷ volume).'
-  root.appendChild(note)
-
-  const table = document.createElement('table')
-  const headerRow = document.createElement('tr')
-  headerRow.innerHTML = `<th>Volume</th>${adapters.map((adapter) => `<th>${adapter.name}</th>`).join('')}`
-  table.appendChild(headerRow)
-
-  const volumes = Object.keys(bench.results.heapDelta ?? {})
-    .map(Number)
-    .sort((a, b) => a - b)
-  for (const volume of volumes) {
-    const row = bench.results.heapDelta?.[String(volume)] ?? {}
-    const values = adapters.map((adapter) => {
-      const heap = row[adapter.name]
-      return typeof heap === 'number' ? heap / volume / 1024 : null
-    })
-    const present = values.filter((value): value is number => value !== null)
-    const best = present.length > 1 && new Set(present.map((value) => value.toFixed(2))).size > 1 ? Math.min(...present) : null
-    const tr = document.createElement('tr')
-    const cells = [`<td>${volume.toLocaleString('en-US')}</td>`]
-    for (const value of values) {
-      const isBest = best !== null && value !== null && value.toFixed(2) === best.toFixed(2)
-      cells.push(`<td class="${isBest ? 'best' : ''}">${value === null ? '—' : `${value.toFixed(2)} KB`}</td>`)
-    }
-    tr.innerHTML = cells.join('')
-    table.appendChild(tr)
-  }
-  root.appendChild(table)
 }
 
 function displayValue(scenario: ScenarioName, value: number): number {

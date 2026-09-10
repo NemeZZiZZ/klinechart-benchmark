@@ -63,6 +63,8 @@ pnpm bench --headless --volumes=5000,10000
 pnpm size
 ```
 
+Both interfaces report progress while a run is in flight, so long volume×adapter combinations don't look stalled: the harness page fills each table cell the moment its measurement lands (with a progress bar in the status line), and the CLI runner renders a live `[####------] NN%` progress bar (or per-stage log lines when stdout is not a TTY).
+
 ### Measuring local source instead of the npm release
 
 By default the harness pins the published `klinecharts` package so results are reproducible. To benchmark a local checkout, point `KLINE_BENCH_LOCAL` at its source entry:

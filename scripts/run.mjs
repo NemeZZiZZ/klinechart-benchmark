@@ -209,9 +209,32 @@ async function main() {
         cpuPending.push(sample)
       })
 
+      // Live progress: the page reports every completed stage. On a TTY render
+      // a single self-overwriting progress-bar line so long runs don't look
+      // stuck; elsewhere log one line per stage (useful in CI).
+      await page.exposeFunction('__benchProgress__', ({ message, done, total }) => {
+        if (process.stdout.isTTY) {
+          const width = 24
+          const filled = Math.round((done / total) * width)
+          const bar = `${'#'.repeat(filled)}${'-'.repeat(width - filled)}`
+          const percent = Math.round((done / total) * 100)
+          const line = `[${bar}] ${String(percent).padStart(3)}% ${message}`
+          process.stdout.write(`\r${line}`.padEnd(110).slice(0, 110))
+        } else {
+          console.log(`[${done}/${total}] ${message}`)
+        }
+      })
+
       const bench = await page.evaluate((selectedVolumes) => {
-        return window.__runBenchmark__({ volumes: selectedVolumes, cpuMarkers: true })
+        return window.__runBenchmark__({
+          volumes: selectedVolumes,
+          cpuMarkers: true,
+          onProgress: (message, progress) => window.__benchProgress__({ message, done: progress?.done ?? 0, total: progress?.total ?? 0 })
+        })
       }, volumes)
+      if (process.stdout.isTTY) {
+        process.stdout.write('\n')
+      }
       await Promise.allSettled(cpuPending)
       for (const [scenario, volumesById] of Object.entries(cpuResults)) {
         for (const [volume, values] of Object.entries(volumesById)) {

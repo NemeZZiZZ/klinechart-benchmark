@@ -4,7 +4,7 @@ import lightweightChartsPkg from 'lightweight-charts/package.json'
 import { adapters, adaptersByName } from './adapters'
 import { CONTAINER_HEIGHT, CONTAINER_WIDTH } from './constants'
 import { generateBars, STEP } from './data'
-import { measureDestroy, measureFpsCrosshair, measureFpsPanZoom, measureFullUpdate, measureHeapDelta, measureInitialRender, measureLeakPerCycle, measureMultiChart, measurePrependBars, measureResize, measureTickUpdates, measureVisibleAllFps, SCENARIO_NAMES } from './scenarios'
+import { measureDestroy, measureFpsCrosshair, measureFpsPanZoom, measureFullUpdate, measureHeapDelta, measureInitialRender, measureLeakPerCycle, measureMultiChart, measurePrependBars, measureResize, measureTickUpdates, measureVisibleAllFps, SCENARIO_NAMES, type ScenarioName } from './scenarios'
 import type { AdapterName, Bar } from './types'
 
 export interface RunOptions {
@@ -14,7 +14,9 @@ export interface RunOptions {
   ticks?: number
   /** Emit `__cpu:` console markers around fps windows so a CDP-attached runner can measure CPU per frame. */
   cpuMarkers?: boolean
-  onProgress?: (message: string) => void
+  onProgress?: (message: string, progress?: { done: number; total: number }) => void
+  /** Called after every recorded metric with the (mutating) partial results object, so UIs can fill in incrementally. */
+  onPartial?: (results: BenchResults['results'], updated?: { scenario: ScenarioName; volume: number }) => void
 }
 
 export interface BundleSize {
@@ -46,6 +48,11 @@ export const DEFAULT_VOLUMES = [5000, 10000, 20000, 50000, 100000, 200000]
 const FULL_UPDATE_REPEATS = 5
 const PREPEND_CHUNK = 1000
 const PREPEND_REPEATS = 5
+// onProgress fires once per (volume, adapter) for each of these stages; keep in
+// sync with the calls below: initialRender, fullUpdate, tickUpdates, fpsPanZoom,
+// fpsCrosshair, prependBars, visibleAllFps, resize, destroyMs, heapDelta,
+// leakPerCycle, multiChart.
+const ADAPTER_STAGES = 12
 
 // performance.eventLoopUtilization is not exposed in window contexts, so the
 // page itself cannot measure CPU per frame. Instead the CLI runner attaches a
@@ -58,11 +65,27 @@ function cpuMarker(kind: 'start' | 'end', scenario: string, adapter: string, vol
 }
 
 export async function runBenchmark(options: RunOptions = {}): Promise<BenchResults> {
-  const { volumes = DEFAULT_VOLUMES, adapterNames = adapters.map((adapter) => adapter.name), fpsDurationMs = 5000, ticks = 1000, cpuMarkers = false, onProgress = () => {} } = options
+  const { volumes = DEFAULT_VOLUMES, adapterNames = adapters.map((adapter) => adapter.name), fpsDurationMs = 5000, ticks = 1000, cpuMarkers = false, onProgress = () => {}, onPartial } = options
+
+  const totalStages = volumes.length * adapterNames.length * ADAPTER_STAGES
+  let doneStages = 0
+  const stage = (message: string): void => {
+    doneStages += 1
+    onProgress(message, { done: Math.min(doneStages, totalStages), total: totalStages })
+  }
 
   const results: BenchResults['results'] = {}
   for (const name of SCENARIO_NAMES) {
     results[name] = {}
+  }
+  onPartial?.(results)
+
+  const set = (scenario: ScenarioName, volume: number, adapter: AdapterName, value: number | null): void => {
+    if (value === null) {
+      return
+    }
+    results[scenario][volume] = { ...results[scenario][volume], [adapter]: value }
+    onPartial?.(results, { scenario, volume })
   }
 
   const chartHost = document.createElement('div')
@@ -89,104 +112,69 @@ export async function runBenchmark(options: RunOptions = {}): Promise<BenchResul
         container.style.height = `${CONTAINER_HEIGHT}px`
         chartHost.appendChild(container)
 
-        onProgress(`initialRender — ${name} @ ${volume} bars`)
+        stage(`initialRender — ${name} @ ${volume} bars`)
         const initial = await measureInitialRender(adapter, container, data)
-        results.initialRender[volume] = {
-          ...results.initialRender[volume],
-          [name]: initial.sync
-        }
-        results.timeToSettledInitial[volume] = {
-          ...results.timeToSettledInitial[volume],
-          [name]: initial.settled
-        }
+        set('initialRender', volume, name, initial.sync)
+        set('timeToSettledInitial', volume, name, initial.settled)
 
-        onProgress(`fullUpdate — ${name} @ ${volume} bars`)
+        stage(`fullUpdate — ${name} @ ${volume} bars`)
         const handle = adapter.create(container, data)
         await new Promise((resolve) => setTimeout(resolve, 200))
         const update = await measureFullUpdate(handle, freshSets)
-        results.fullUpdate[volume] = {
-          ...results.fullUpdate[volume],
-          [name]: update.sync
-        }
-        results.timeToSettledUpdate[volume] = {
-          ...results.timeToSettledUpdate[volume],
-          [name]: update.settled
-        }
+        set('fullUpdate', volume, name, update.sync)
+        set('timeToSettledUpdate', volume, name, update.settled)
         // Return to the primary dataset so tick updates mutate the last bar
         // the chart actually shows.
         handle.applyData(data)
         await new Promise((resolve) => setTimeout(resolve, 200))
 
-        onProgress(`tickUpdates — ${name} @ ${volume} bars`)
-        results.tickUpdates[volume] = {
-          ...results.tickUpdates[volume],
-          [name]: await measureTickUpdates(handle, data, ticks)
-        }
+        stage(`tickUpdates — ${name} @ ${volume} bars`)
+        set('tickUpdates', volume, name, await measureTickUpdates(handle, data, ticks))
 
-        onProgress(`fpsPanZoom — ${name} @ ${volume} bars`)
+        stage(`fpsPanZoom — ${name} @ ${volume} bars`)
         cpuMarker('start', 'cpuPanZoom', name, volume, cpuMarkers)
         const panZoom = await measureFpsPanZoom(container, fpsDurationMs)
         cpuMarker('end', 'cpuPanZoom', name, volume, cpuMarkers, panZoom.frames)
-        results.fpsPanZoom[volume] = { ...results.fpsPanZoom[volume], [name]: panZoom.fps }
-        results.frameP99PanZoom[volume] = { ...results.frameP99PanZoom[volume], [name]: panZoom.p99 }
-        results.jankPanZoom[volume] = { ...results.jankPanZoom[volume], [name]: panZoom.jank }
+        set('fpsPanZoom', volume, name, panZoom.fps)
+        set('frameP99PanZoom', volume, name, panZoom.p99)
+        set('jankPanZoom', volume, name, panZoom.jank)
 
-        onProgress(`fpsCrosshair — ${name} @ ${volume} bars`)
+        stage(`fpsCrosshair — ${name} @ ${volume} bars`)
         cpuMarker('start', 'cpuCrosshair', name, volume, cpuMarkers)
         const crosshair = await measureFpsCrosshair(container, fpsDurationMs)
         cpuMarker('end', 'cpuCrosshair', name, volume, cpuMarkers, crosshair.frames)
-        results.fpsCrosshair[volume] = { ...results.fpsCrosshair[volume], [name]: crosshair.fps }
-        results.frameP99Crosshair[volume] = { ...results.frameP99Crosshair[volume], [name]: crosshair.p99 }
-        results.jankCrosshair[volume] = { ...results.jankCrosshair[volume], [name]: crosshair.jank }
+        set('fpsCrosshair', volume, name, crosshair.fps)
+        set('frameP99Crosshair', volume, name, crosshair.p99)
+        set('jankCrosshair', volume, name, crosshair.jank)
 
-        onProgress(`prependBars — ${name} @ ${volume} bars`)
-        results.prependBars[volume] = {
-          ...results.prependBars[volume],
-          [name]: await measurePrependBars(handle, olderBars, PREPEND_CHUNK, PREPEND_REPEATS)
-        }
+        stage(`prependBars — ${name} @ ${volume} bars`)
+        set('prependBars', volume, name, await measurePrependBars(handle, olderBars, PREPEND_CHUNK, PREPEND_REPEATS))
 
-        onProgress(`visibleAllFps — ${name} @ ${volume} bars`)
+        stage(`visibleAllFps — ${name} @ ${volume} bars`)
         handle.setVisibleAll()
         await new Promise((resolve) => setTimeout(resolve, 200))
-        results.visibleAllFps[volume] = {
-          ...results.visibleAllFps[volume],
-          [name]: await measureVisibleAllFps(container, fpsDurationMs)
-        }
+        set('visibleAllFps', volume, name, await measureVisibleAllFps(container, fpsDurationMs))
 
-        onProgress(`resize — ${name} @ ${volume} bars`)
-        results.resize[volume] = {
-          ...results.resize[volume],
-          [name]: await measureResize(handle)
-        }
+        stage(`resize — ${name} @ ${volume} bars`)
+        set('resize', volume, name, await measureResize(handle))
         container.style.width = `${CONTAINER_WIDTH}px`
         container.style.height = `${CONTAINER_HEIGHT}px`
         handle.resize(CONTAINER_WIDTH, CONTAINER_HEIGHT)
 
-        onProgress(`destroyMs — ${name} @ ${volume} bars`)
-        results.destroyMs[volume] = {
-          ...results.destroyMs[volume],
-          [name]: await measureDestroy(adapter, container, data)
-        }
+        stage(`destroyMs — ${name} @ ${volume} bars`)
+        set('destroyMs', volume, name, await measureDestroy(adapter, container, data))
         handle.destroy()
 
-        onProgress(`heapDelta — ${name} @ ${volume} bars`)
-        results.heapDelta[volume] = {
-          ...results.heapDelta[volume],
-          [name]: await measureHeapDelta(adapter, container, data)
-        }
+        stage(`heapDelta — ${name} @ ${volume} bars`)
+        set('heapDelta', volume, name, await measureHeapDelta(adapter, container, data))
 
-        onProgress(`leakPerCycle — ${name} @ ${volume} bars`)
-        results.leakPerCycle[volume] = {
-          ...results.leakPerCycle[volume],
-          [name]: await measureLeakPerCycle(adapter, container, data)
-        }
+        stage(`leakPerCycle — ${name} @ ${volume} bars`)
+        set('leakPerCycle', volume, name, await measureLeakPerCycle(adapter, container, data))
 
-        onProgress(`multiChart — ${name} @ ${volume} bars`)
+        stage(`multiChart — ${name} @ ${volume} bars`)
         const multi = await measureMultiChart(adapter, data, 4, fpsDurationMs)
-        if (multi.heap !== null) {
-          results.multiChartHeap[volume] = { ...results.multiChartHeap[volume], [name]: multi.heap }
-        }
-        results.multiChartFps[volume] = { ...results.multiChartFps[volume], [name]: multi.fps }
+        set('multiChartHeap', volume, name, multi.heap)
+        set('multiChartFps', volume, name, multi.fps)
 
         container.remove()
         await new Promise((resolve) => setTimeout(resolve, 100))
