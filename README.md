@@ -1,5 +1,7 @@
 # KLineChart Benchmark
 
+**Live harness: <https://nemezzizz.github.io/klinechart-benchmark/>** — run the benchmark in your own browser.
+
 Reproducible performance comparison of three charting libraries rendering the same OHLCV data:
 
 - [klinecharts](https://github.com/klinecharts/KLineChart)

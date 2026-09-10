@@ -1,3 +1,4 @@
 node_modules/
 size-dist/
+dist/
 .DS_Store
