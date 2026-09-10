@@ -55,6 +55,9 @@ export const lightweightChartsAdapter: ChartAdapter = {
           close: bar.close
         })
       },
+      resize(width, height) {
+        chart.applyOptions({ width, height })
+      },
       destroy() {
         chart.remove()
       }

@@ -30,12 +30,24 @@ function waitForServer(port, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     function attempt() {
       const request = httpGet({ port, path: '/', timeout: 2000 }, (response) => {
-        response.resume()
-        if (response.statusCode === 200) {
-          resolve()
-        } else {
+        if (response.statusCode !== 200) {
+          response.resume()
           retry()
+          return
         }
+        // Verify the benchmark page itself answered, not some other server on this port.
+        let body = ''
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          if (body.includes('<title>KLineChart Benchmark</title>')) {
+            resolve()
+          } else {
+            retry()
+          }
+        })
+        response.on('error', retry)
       })
       request.on('error', retry)
     }
@@ -67,11 +79,17 @@ function runBundleSize() {
   })
 }
 
-function formatCell(value) {
+function formatCell(value, scenario) {
   if (value === null || value === undefined) {
     return '—'
   }
   if (typeof value === 'number') {
+    if (scenario === 'heapDelta') {
+      return `${(value / 1024 / 1024).toFixed(1)} MB`
+    }
+    if (scenario === 'tickUpdates') {
+      return value.toFixed(4)
+    }
     return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(3)
   }
   return String(value)
@@ -84,7 +102,23 @@ function printResults(bench) {
     const header = ['volume', ...libs].map((value) => value.padEnd(20)).join('')
     console.log(header)
     for (const [volume, values] of Object.entries(volumes)) {
-      const row = [volume, ...libs.map((lib) => formatCell(values[lib]))]
+      const row = [volume, ...libs.map((lib) => formatCell(values[lib], scenario))]
+      console.log(row.map((value) => value.padEnd(20)).join(''))
+    }
+  }
+  const heapDelta = bench.results.heapDelta
+  if (heapDelta !== undefined) {
+    console.log('\n=== heapPerBar (KB per bar, derived) ===')
+    const header = ['volume', ...libs].map((value) => value.padEnd(20)).join('')
+    console.log(header)
+    for (const [volume, values] of Object.entries(heapDelta)) {
+      const row = [
+        volume,
+        ...libs.map((lib) => {
+          const heap = values[lib]
+          return typeof heap === 'number' ? `${(heap / Number(volume) / 1024).toFixed(2)} KB` : '—'
+        })
+      ]
       console.log(row.map((value) => value.padEnd(20)).join(''))
     }
   }
@@ -126,8 +160,8 @@ async function main() {
         bench.bundleSize = bundleSize
       }
       await mkdir(resultsDir, { recursive: true })
-      const now = new Date()
-      const stamp = `${[String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-')}-${[String(now.getHours()).padStart(2, '0'), String(now.getMinutes()).padStart(2, '0'), String(now.getSeconds()).padStart(2, '0')].join('')}`
+      // UTC ISO stamp (matches meta.date, millisecond precision avoids collisions)
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
       const file = path.join(resultsDir, `${stamp}.json`)
       await writeFile(file, `${JSON.stringify(bench, null, 2)}\n`)
       printResults(bench)

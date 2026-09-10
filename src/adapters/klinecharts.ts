@@ -41,6 +41,11 @@ export const klinechartsAdapter: ChartAdapter = {
       updateLast(bar) {
         realtimeCallback?.(bar as KLineData)
       },
+      resize(width, height) {
+        container.style.width = `${width}px`
+        container.style.height = `${height}px`
+        chart.resize()
+      },
       destroy() {
         realtimeCallback = null
         dispose(chart)

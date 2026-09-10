@@ -12,20 +12,24 @@ Reproducible performance comparison of three charting libraries rendering the sa
 
 | Scenario | What it measures | Unit |
 | --- | --- | --- |
-| `initialRender` | init + full data load to a settled rendered frame, median of 5 | ms |
-| `fullUpdate` | replacing the whole dataset on a live chart, median of 5 | ms |
-| `tickUpdates` | 1000 sequential updates of the last candle | ms per tick |
-| `fpsPanZoom` | average FPS over 5s of synthetic pointer pan + wheel zoom | fps |
+| `initialRender` | synchronous execution of init + full data load (canvas draw calls run synchronously on the CPU; frame presentation is compositor work identical for all libraries), median of 5 | ms |
+| `fullUpdate` | synchronous execution of replacing the whole dataset with an independently seeded one (seed 43) on a live chart, median of 5 | ms |
+| `tickUpdates` | synchronous time of 1000 sequential updates of the last (still forming) candle: open fixed, high/low only expand, close random-walks, volume accumulates | ms per tick |
+| `fpsPanZoom` | average FPS over 5s of synthetic drag pan (mouse+pointer event pairs) + wheel zoom every 500ms | fps |
+| `fpsCrosshair` | average FPS over 5s of synthetic hover (crosshair tracking, no buttons pressed) | fps |
+| `resize` | synchronous execution of a container resize (800×400 ↔ 640×360, alternating), median of 5 | ms |
+| `destroyMs` | synchronous execution of chart disposal after a settled render, median of 5 | ms |
 | `heapDelta` | retained JS heap growth after loading a chart with N bars; forced GC before both snapshots when available (Chromium only) | MB |
-| `bundleSize` | production Vite build of a minimal one-chart page, raw + gzip | bytes |
+| `heapPerBar` | derived: `heapDelta ÷ volume`, normalized memory cost per candle | KB |
+| `bundleSize` | production Vite build of a minimal one-chart page (modular imports only — for ECharts: `echarts/core` + candlestick chart, grid/dataZoom components, canvas renderer), raw + gzip | bytes |
 
 ## Fairness rules
 
 - Chart container is 800×400 for every library, animations disabled.
-- Identical seeded dataset (mulberry32, seed 42) for a given volume.
+- Identical seeded dataset (mulberry32, seed 42) for a given volume; `fullUpdate` replaces it with a second seeded dataset (seed 43) of the same volume.
 - Visible window is the last 120 candles in every library.
 - ECharts uses the canvas renderer explicitly.
-- Pan/zoom uses the same synthetic input event trajectory for every library.
+- Pan/zoom/crosshair use the same synthetic input event trajectory for every library. Events are dispatched as mouse+pointer pairs because the libraries listen to different event families: klinecharts and lightweight-charts handle mouse events only, ECharts (zrender) mounts pointer listeners only — each library sees exactly one copy of every gesture. Events target the topmost canvas under the cursor, mirroring real hit-testing (lightweight-charts attaches its mouse handlers to the top overlay canvas; events dispatched on a sibling canvas never reach them).
 
 ## Usage
 
@@ -61,7 +65,7 @@ KLINE_BENCH_LOCAL=../KLineChart/src/index.ts pnpm run
 
 ## Results format
 
-Each run writes `results/<timestamp>.json` (committed runs serve as reference data):
+Each run writes `results/<timestamp>.json` (UTC ISO timestamp, matching `meta.date`; committed runs serve as reference data):
 
 ```json
 {

@@ -4,7 +4,7 @@ import { version as echartsVersion } from 'echarts'
 import { adapters, adaptersByName } from './adapters'
 import { CONTAINER_HEIGHT, CONTAINER_WIDTH } from './constants'
 import { generateBars } from './data'
-import { measureFpsPanZoom, measureFullUpdate, measureHeapDelta, measureInitialRender, measureTickUpdates } from './scenarios'
+import { measureDestroy, measureFpsCrosshair, measureFpsPanZoom, measureFullUpdate, measureHeapDelta, measureInitialRender, measureResize, measureTickUpdates, SCENARIO_NAMES } from './scenarios'
 import type { AdapterName, Bar } from './types'
 
 export interface RunOptions {
@@ -45,7 +45,7 @@ export async function runBenchmark(options: RunOptions = {}): Promise<BenchResul
   const { volumes = DEFAULT_VOLUMES, adapterNames = adapters.map((adapter) => adapter.name), fpsDurationMs = 5000, ticks = 1000, onProgress = () => {} } = options
 
   const results: BenchResults['results'] = {}
-  for (const name of ['initialRender', 'fullUpdate', 'tickUpdates', 'fpsPanZoom', 'heapDelta']) {
+  for (const name of SCENARIO_NAMES) {
     results[name] = {}
   }
 
@@ -72,9 +72,12 @@ export async function runBenchmark(options: RunOptions = {}): Promise<BenchResul
         onProgress(`fullUpdate — ${name} @ ${volume} bars`)
         const handle = adapter.create(container, data)
         await new Promise((resolve) => setTimeout(resolve, 200))
+        // Independently seeded dataset of the same volume — replacing data with
+        // the identical array would let libraries shortcut on reference equality.
+        const freshData = generateBars(volume, { seed: 43 })
         results.fullUpdate[volume] = {
           ...results.fullUpdate[volume],
-          [name]: await measureFullUpdate(handle, data)
+          [name]: await measureFullUpdate(handle, freshData)
         }
 
         onProgress(`tickUpdates — ${name} @ ${volume} bars`)
@@ -87,6 +90,27 @@ export async function runBenchmark(options: RunOptions = {}): Promise<BenchResul
         results.fpsPanZoom[volume] = {
           ...results.fpsPanZoom[volume],
           [name]: await measureFpsPanZoom(container, fpsDurationMs)
+        }
+
+        onProgress(`fpsCrosshair — ${name} @ ${volume} bars`)
+        results.fpsCrosshair[volume] = {
+          ...results.fpsCrosshair[volume],
+          [name]: await measureFpsCrosshair(container, fpsDurationMs)
+        }
+
+        onProgress(`resize — ${name} @ ${volume} bars`)
+        results.resize[volume] = {
+          ...results.resize[volume],
+          [name]: await measureResize(handle)
+        }
+        container.style.width = `${CONTAINER_WIDTH}px`
+        container.style.height = `${CONTAINER_HEIGHT}px`
+        handle.resize(CONTAINER_WIDTH, CONTAINER_HEIGHT)
+
+        onProgress(`destroyMs — ${name} @ ${volume} bars`)
+        results.destroyMs[volume] = {
+          ...results.destroyMs[volume],
+          [name]: await measureDestroy(adapter, container, data)
         }
         handle.destroy()
 

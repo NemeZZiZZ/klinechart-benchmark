@@ -37,6 +37,9 @@ export const echartsAdapter: ChartAdapter = {
         candleData = next
         chart.setOption({ series: [{ data: next }] })
       },
+      resize(width, height) {
+        chart.resize({ width, height })
+      },
       destroy() {
         chart.dispose()
       }

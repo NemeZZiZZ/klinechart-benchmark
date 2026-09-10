@@ -10,6 +10,9 @@ const SCENARIO_LABELS: Record<ScenarioName, { label: string; unit: string; highe
   fullUpdate: { label: 'Full data replace', unit: 'ms (median of 5)', higherIsBetter: false },
   tickUpdates: { label: 'Tick updates', unit: 'ms per tick (1000 ticks)', higherIsBetter: false },
   fpsPanZoom: { label: 'FPS pan + zoom', unit: 'fps over 5s', higherIsBetter: true },
+  fpsCrosshair: { label: 'FPS crosshair', unit: 'fps over 5s', higherIsBetter: true },
+  resize: { label: 'Resize', unit: 'ms (median of 5)', higherIsBetter: false },
+  destroyMs: { label: 'Destroy', unit: 'ms (median of 5)', higherIsBetter: false },
   heapDelta: { label: 'Heap delta', unit: 'MB after load', higherIsBetter: false }
 }
 
@@ -110,6 +113,8 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
     root.appendChild(table)
   }
 
+  renderHeapPerBar(root, bench)
+
   const actions = document.createElement('div')
   actions.className = 'actions'
   const download = document.createElement('button')
@@ -128,6 +133,44 @@ function renderResults(root: HTMLElement, bench: BenchResults): void {
   root.appendChild(actions)
 }
 
+function renderHeapPerBar(root: HTMLElement, bench: BenchResults): void {
+  const heading = document.createElement('h2')
+  heading.textContent = 'Heap per bar'
+  root.appendChild(heading)
+
+  const note = document.createElement('p')
+  note.className = 'unit-note'
+  note.textContent = 'Unit: KB per bar (derived: heapDelta ÷ volume).'
+  root.appendChild(note)
+
+  const table = document.createElement('table')
+  const headerRow = document.createElement('tr')
+  headerRow.innerHTML = `<th>Volume</th>${adapters.map((adapter) => `<th>${adapter.name}</th>`).join('')}`
+  table.appendChild(headerRow)
+
+  const volumes = Object.keys(bench.results.heapDelta ?? {})
+    .map(Number)
+    .sort((a, b) => a - b)
+  for (const volume of volumes) {
+    const row = bench.results.heapDelta?.[String(volume)] ?? {}
+    const values = adapters.map((adapter) => {
+      const heap = row[adapter.name]
+      return typeof heap === 'number' ? heap / volume / 1024 : null
+    })
+    const present = values.filter((value): value is number => value !== null)
+    const best = present.length > 1 && new Set(present.map((value) => value.toFixed(2))).size > 1 ? Math.min(...present) : null
+    const tr = document.createElement('tr')
+    const cells = [`<td>${volume.toLocaleString('en-US')}</td>`]
+    for (const value of values) {
+      const isBest = best !== null && value !== null && value.toFixed(2) === best.toFixed(2)
+      cells.push(`<td class="${isBest ? 'best' : ''}">${value === null ? '—' : `${value.toFixed(2)} KB`}</td>`)
+    }
+    tr.innerHTML = cells.join('')
+    table.appendChild(tr)
+  }
+  root.appendChild(table)
+}
+
 function displayValue(scenario: ScenarioName, value: number): number {
   if (scenario === 'heapDelta') {
     return Math.round((value / 1024 / 1024) * 10) / 10
@@ -138,7 +181,7 @@ function displayValue(scenario: ScenarioName, value: number): number {
 }
 
 function formatDigits(scenario: ScenarioName): number {
-  if (scenario === 'fpsPanZoom') {
+  if (scenario === 'fpsPanZoom' || scenario === 'fpsCrosshair') {
     return 0
   }
   if (scenario === 'tickUpdates') {

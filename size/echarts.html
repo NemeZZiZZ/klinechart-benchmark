@@ -7,7 +7,13 @@
   <body>
     <div id="chart" style="width: 800px; height: 400px"></div>
     <script type="module">
-      import * as echarts from 'echarts'
+      // Modular imports: same component set the benchmark adapter actually uses.
+      import * as echarts from 'echarts/core'
+      import { CandlestickChart } from 'echarts/charts'
+      import { DataZoomComponent, GridComponent } from 'echarts/components'
+      import { CanvasRenderer } from 'echarts/renderers'
+
+      echarts.use([CandlestickChart, GridComponent, DataZoomComponent, CanvasRenderer])
 
       const container = document.getElementById('chart')
       const count = 1000
@@ -21,8 +27,10 @@
       const chart = echarts.init(container, null, { renderer: 'canvas', width: 800, height: 400 })
       chart.setOption({
         animation: false,
+        grid: { left: 60, right: 20, top: 20, bottom: 40 },
         xAxis: { type: 'category', data: candleData.map((_, index) => String(index)) },
         yAxis: { type: 'value', scale: true },
+        dataZoom: [{ type: 'inside', startValue: count - 120, endValue: count - 1 }],
         series: [{ type: 'candlestick', data: candleData }]
       })
     </script>
