@@ -12,7 +12,7 @@ export function mulberry32(seed: number): () => number {
 }
 
 const BASE_TIMESTAMP = Date.UTC(2020, 0, 1)
-const STEP = 60_000
+export const STEP = 60_000
 const BASE_PRICE = 100
 
 export interface GenerateOptions {

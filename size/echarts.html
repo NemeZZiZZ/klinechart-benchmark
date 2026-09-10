@@ -7,10 +7,10 @@
   <body>
     <div id="chart" style="width: 800px; height: 400px"></div>
     <script type="module">
-      // Modular imports: same component set the benchmark adapter actually uses.
-      import * as echarts from 'echarts/core'
       import { CandlestickChart } from 'echarts/charts'
       import { DataZoomComponent, GridComponent } from 'echarts/components'
+      // Modular imports: same component set the benchmark adapter actually uses.
+      import * as echarts from 'echarts/core'
       import { CanvasRenderer } from 'echarts/renderers'
 
       echarts.use([CandlestickChart, GridComponent, DataZoomComponent, CanvasRenderer])

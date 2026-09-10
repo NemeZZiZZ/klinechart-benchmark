@@ -12,6 +12,8 @@ export type AdapterName = 'klinecharts' | 'lightweight-charts' | 'echarts'
 export interface ChartHandle {
   applyData(data: Bar[]): void
   updateLast(bar: Bar): void
+  prependBars(bars: Bar[]): void
+  setVisibleAll(): void
   resize(width: number, height: number): void
   destroy(): void
 }

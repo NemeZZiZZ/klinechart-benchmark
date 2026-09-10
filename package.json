@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "biome check . --assist-enabled=false",
     "type-check": "tsc --noEmit",
-    "run": "node scripts/run.mjs",
+    "bench": "node scripts/run.mjs",
     "size": "node scripts/size.mjs"
   },
   "dependencies": {

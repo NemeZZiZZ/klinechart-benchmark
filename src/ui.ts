@@ -1,19 +1,32 @@
 import { adapters } from './adapters'
-import { DEFAULT_VOLUMES, runBenchmark, type BenchResults } from './runner'
+import { type BenchResults, DEFAULT_VOLUMES, runBenchmark } from './runner'
 import { SCENARIO_NAMES, type ScenarioName } from './scenarios'
 
 const ALL_VOLUMES = DEFAULT_VOLUMES
 const DEFAULT_SELECTED = [5000, 10000, 20000, 50000]
 
 const SCENARIO_LABELS: Record<ScenarioName, { label: string; unit: string; higherIsBetter: boolean }> = {
-  initialRender: { label: 'Initial render', unit: 'ms (median of 5)', higherIsBetter: false },
-  fullUpdate: { label: 'Full data replace', unit: 'ms (median of 5)', higherIsBetter: false },
+  initialRender: { label: 'Initial render (sync)', unit: 'ms (median of 5)', higherIsBetter: false },
+  timeToSettledInitial: { label: 'Initial render → settled frame', unit: 'ms (median of 5, includes 2 rAF baseline)', higherIsBetter: false },
+  fullUpdate: { label: 'Full data replace (sync)', unit: 'ms (median of 5)', higherIsBetter: false },
+  timeToSettledUpdate: { label: 'Full replace → settled frame', unit: 'ms (median of 5, includes 2 rAF baseline)', higherIsBetter: false },
   tickUpdates: { label: 'Tick updates', unit: 'ms per tick (1000 ticks)', higherIsBetter: false },
+  prependBars: { label: 'Prepend 1000 older bars', unit: 'ms (median of 5)', higherIsBetter: false },
   fpsPanZoom: { label: 'FPS pan + zoom', unit: 'fps over 5s', higherIsBetter: true },
+  frameP99PanZoom: { label: 'Frame p99 (pan + zoom)', unit: 'ms between rAF frames', higherIsBetter: false },
+  jankPanZoom: { label: 'Janky frames (pan + zoom)', unit: 'count over 5s (≥ 2× median and ≥ 16.7 ms)', higherIsBetter: false },
+  cpuPanZoom: { label: 'CPU per frame (pan + zoom)', unit: 'ms main-thread CPU per frame (CLI runner only, shows — here)', higherIsBetter: false },
   fpsCrosshair: { label: 'FPS crosshair', unit: 'fps over 5s', higherIsBetter: true },
+  frameP99Crosshair: { label: 'Frame p99 (crosshair)', unit: 'ms between rAF frames', higherIsBetter: false },
+  jankCrosshair: { label: 'Janky frames (crosshair)', unit: 'count over 5s (≥ 2× median and ≥ 16.7 ms)', higherIsBetter: false },
+  cpuCrosshair: { label: 'CPU per frame (crosshair)', unit: 'ms main-thread CPU per frame (CLI runner only, shows — here)', higherIsBetter: false },
+  visibleAllFps: { label: 'FPS pan, all bars visible', unit: 'fps over 5s', higherIsBetter: true },
   resize: { label: 'Resize', unit: 'ms (median of 5)', higherIsBetter: false },
   destroyMs: { label: 'Destroy', unit: 'ms (median of 5)', higherIsBetter: false },
-  heapDelta: { label: 'Heap delta', unit: 'MB after load', higherIsBetter: false }
+  heapDelta: { label: 'Heap delta', unit: 'MB after load', higherIsBetter: false },
+  leakPerCycle: { label: 'Leak per create→destroy cycle', unit: 'KB per cycle (10 cycles)', higherIsBetter: false },
+  multiChartHeap: { label: 'Heap, 4 charts live', unit: 'MB total', higherIsBetter: false },
+  multiChartFps: { label: 'FPS pan, 4 charts live', unit: 'fps over 5s', higherIsBetter: true }
 }
 
 export function setupUI(): void {
@@ -172,8 +185,11 @@ function renderHeapPerBar(root: HTMLElement, bench: BenchResults): void {
 }
 
 function displayValue(scenario: ScenarioName, value: number): number {
-  if (scenario === 'heapDelta') {
+  if (scenario === 'heapDelta' || scenario === 'multiChartHeap') {
     return Math.round((value / 1024 / 1024) * 10) / 10
+  }
+  if (scenario === 'leakPerCycle') {
+    return Math.round((value / 1024) * 100) / 100
   }
   const digits = formatDigits(scenario)
   const factor = 10 ** digits
@@ -181,10 +197,10 @@ function displayValue(scenario: ScenarioName, value: number): number {
 }
 
 function formatDigits(scenario: ScenarioName): number {
-  if (scenario === 'fpsPanZoom' || scenario === 'fpsCrosshair') {
+  if (scenario === 'fpsPanZoom' || scenario === 'fpsCrosshair' || scenario === 'visibleAllFps' || scenario === 'multiChartFps' || scenario === 'jankPanZoom' || scenario === 'jankCrosshair') {
     return 0
   }
-  if (scenario === 'tickUpdates') {
+  if (scenario === 'tickUpdates' || scenario === 'cpuPanZoom' || scenario === 'cpuCrosshair') {
     return 4
   }
   return 1
@@ -207,8 +223,11 @@ function formatValue(scenario: ScenarioName, value: number | null | undefined): 
   if (value === null || value === undefined) {
     return '—'
   }
-  if (scenario === 'heapDelta') {
+  if (scenario === 'heapDelta' || scenario === 'multiChartHeap') {
     return `${(value / 1024 / 1024).toFixed(1)} MB`
+  }
+  if (scenario === 'leakPerCycle') {
+    return `${(value / 1024).toFixed(2)} KB`
   }
   return value.toFixed(formatDigits(scenario))
 }

@@ -1,7 +1,30 @@
+import { CONTAINER_HEIGHT, CONTAINER_WIDTH } from './constants'
 import { mulberry32 } from './data'
 import type { Bar, ChartAdapter, ChartHandle } from './types'
 
-export const SCENARIO_NAMES = ['initialRender', 'fullUpdate', 'tickUpdates', 'fpsPanZoom', 'fpsCrosshair', 'resize', 'destroyMs', 'heapDelta'] as const
+export const SCENARIO_NAMES = [
+  'initialRender',
+  'timeToSettledInitial',
+  'fullUpdate',
+  'timeToSettledUpdate',
+  'tickUpdates',
+  'prependBars',
+  'fpsPanZoom',
+  'frameP99PanZoom',
+  'jankPanZoom',
+  'cpuPanZoom',
+  'fpsCrosshair',
+  'frameP99Crosshair',
+  'jankCrosshair',
+  'cpuCrosshair',
+  'visibleAllFps',
+  'resize',
+  'destroyMs',
+  'heapDelta',
+  'leakPerCycle',
+  'multiChartHeap',
+  'multiChartFps'
+] as const
 
 export type ScenarioName = (typeof SCENARIO_NAMES)[number]
 
@@ -14,35 +37,70 @@ async function settledFrame(): Promise<void> {
   await raf()
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
 }
 
-export async function measureInitialRender(adapter: ChartAdapter, container: HTMLElement, data: Bar[], repeats = 5): Promise<number> {
-  const times: number[] = []
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) {
+    return 0
+  }
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))
+  return sorted[index]
+}
+
+export interface Timings {
+  sync: number
+  settled: number
+}
+
+export interface FpsStats {
+  fps: number
+  p99: number
+  jank: number
+  frames: number
+}
+
+export interface MultiChartStats {
+  heap: number | null
+  fps: number
+}
+
+export async function measureInitialRender(adapter: ChartAdapter, container: HTMLElement, data: Bar[], repeats = 5): Promise<Timings> {
+  const syncTimes: number[] = []
+  const settledTimes: number[] = []
   for (let i = 0; i < repeats; i += 1) {
     await settledFrame()
     const start = performance.now()
     const handle = adapter.create(container, data)
-    times.push(performance.now() - start)
+    syncTimes.push(performance.now() - start)
     await settledFrame()
+    settledTimes.push(performance.now() - start)
     handle.destroy()
   }
-  return median(times)
+  return { sync: median(syncTimes), settled: median(settledTimes) }
 }
 
-export async function measureFullUpdate(handle: ChartHandle, data: Bar[], repeats = 5): Promise<number> {
-  const times: number[] = []
+export async function measureFullUpdate(handle: ChartHandle, datasets: Bar[][], repeats = 5): Promise<Timings> {
+  const syncTimes: number[] = []
+  const settledTimes: number[] = []
   for (let i = 0; i < repeats; i += 1) {
     await settledFrame()
+    const dataset = datasets[i % datasets.length]
     const start = performance.now()
-    handle.applyData(data)
-    times.push(performance.now() - start)
+    handle.applyData(dataset)
+    syncTimes.push(performance.now() - start)
     await settledFrame()
+    settledTimes.push(performance.now() - start)
   }
-  return median(times)
+  return { sync: median(syncTimes), settled: median(settledTimes) }
 }
 
 export async function measureTickUpdates(handle: ChartHandle, data: Bar[], ticks = 1000): Promise<number> {
@@ -72,8 +130,40 @@ export async function measureTickUpdates(handle: ChartHandle, data: Bar[], ticks
   return elapsed / ticks
 }
 
+// Simulates lazy history loading: older bars arrive in chunks while the chart
+// stays anchored to the newest bars.
+export async function measurePrependBars(handle: ChartHandle, older: Bar[], chunkSize = 1000, repeats = 5): Promise<number> {
+  const times: number[] = []
+  // Chunks are fed newest-first: every prepend places its chunk before all
+  // existing bars, so the oldest chunk must land last to keep time ascending.
+  for (let i = 0; i < repeats; i += 1) {
+    await settledFrame()
+    const end = older.length - i * chunkSize
+    const chunk = older.slice(Math.max(0, end - chunkSize), end)
+    if (chunk.length === 0) {
+      break
+    }
+    const start = performance.now()
+    handle.prependBars(chunk)
+    times.push(performance.now() - start)
+    await settledFrame()
+  }
+  return median(times)
+}
+
 interface MemoryPerformance extends Performance {
   memory?: { usedJSHeapSize: number }
+}
+
+// A frame counts as janky when it lasts at least twice the median frame time
+// and at least one missed 60 Hz frame (16.7 ms), so the counter adapts to the
+// display refresh rate instead of assuming one.
+function countJank(frameTimes: number[]): number {
+  if (frameTimes.length === 0) {
+    return 0
+  }
+  const threshold = Math.max(median(frameTimes) * 2, 1000 / 60)
+  return frameTimes.filter((delta) => delta >= threshold).length
 }
 
 // Synthetic events bypass hit-testing, so they must be dispatched on the same
@@ -133,12 +223,13 @@ function dispatchPointerAndMouse(target: HTMLElement, kind: 'down' | 'move' | 'u
   )
 }
 
-async function drivePointerInput(container: HTMLElement, durationMs: number, mode: 'panZoom' | 'crosshair'): Promise<number> {
+async function drivePointerInput(container: HTMLElement, durationMs: number, mode: 'panZoom' | 'crosshair' | 'pan'): Promise<FpsStats> {
   const target = getCanvasTarget(container)
   const rect = target.getBoundingClientRect()
   const centerX = rect.left + rect.width / 2
   const centerY = rect.top + rect.height / 2
-  const panning = mode === 'panZoom'
+  const panning = mode !== 'crosshair'
+  const zooming = mode === 'panZoom'
 
   if (panning) {
     dispatchPointerAndMouse(target, 'down', { clientX: centerX, clientY: centerY, buttons: 1 })
@@ -148,6 +239,8 @@ async function drivePointerInput(container: HTMLElement, durationMs: number, mod
   let frames = 0
   let lastWheel = start
   let wheelDirection = 1
+  let previousFrame = 0
+  const frameTimes: number[] = []
 
   await new Promise<void>((resolve) => {
     function frame(now: number) {
@@ -156,6 +249,10 @@ async function drivePointerInput(container: HTMLElement, durationMs: number, mod
         resolve()
         return
       }
+      if (previousFrame > 0) {
+        frameTimes.push(now - previousFrame)
+      }
+      previousFrame = now
       frames += 1
       const phase = (elapsed / durationMs) * Math.PI * 12
       dispatchPointerAndMouse(target, 'move', {
@@ -163,7 +260,7 @@ async function drivePointerInput(container: HTMLElement, durationMs: number, mod
         clientY: panning ? centerY : centerY + Math.cos(phase) * (rect.height / 4),
         buttons: panning ? 1 : 0
       })
-      if (panning && now - lastWheel >= 500) {
+      if (zooming && now - lastWheel >= 500) {
         lastWheel = now
         wheelDirection *= -1
         target.dispatchEvent(
@@ -187,15 +284,25 @@ async function drivePointerInput(container: HTMLElement, durationMs: number, mod
   }
 
   const elapsed = performance.now() - start
-  return (frames * 1000) / elapsed
+  return {
+    fps: (frames * 1000) / elapsed,
+    p99: percentile(frameTimes, 0.99),
+    jank: countJank(frameTimes),
+    frames
+  }
 }
 
-export function measureFpsPanZoom(container: HTMLElement, durationMs = 5000): Promise<number> {
+export function measureFpsPanZoom(container: HTMLElement, durationMs = 5000): Promise<FpsStats> {
   return drivePointerInput(container, durationMs, 'panZoom')
 }
 
-export function measureFpsCrosshair(container: HTMLElement, durationMs = 5000): Promise<number> {
+export function measureFpsCrosshair(container: HTMLElement, durationMs = 5000): Promise<FpsStats> {
   return drivePointerInput(container, durationMs, 'crosshair')
+}
+
+export async function measureVisibleAllFps(container: HTMLElement, durationMs = 5000): Promise<number> {
+  const stats = await drivePointerInput(container, durationMs, 'pan')
+  return stats.fps
 }
 
 export async function measureResize(handle: ChartHandle, repeats = 5): Promise<number> {
@@ -215,15 +322,22 @@ export async function measureResize(handle: ChartHandle, repeats = 5): Promise<n
   return median(times)
 }
 
+// Each iteration gets its own fresh container: reusing the shared one would
+// make klinecharts/ECharts `init` return the still-live instance instead of
+// creating a new chart, silently disposing someone else's chart.
 export async function measureDestroy(adapter: ChartAdapter, container: HTMLElement, data: Bar[], repeats = 5): Promise<number> {
   const times: number[] = []
   for (let i = 0; i < repeats; i += 1) {
-    const handle = adapter.create(container, data)
+    const fresh = document.createElement('div')
+    fresh.style.cssText = container.style.cssText
+    container.appendChild(fresh)
+    const handle = adapter.create(fresh, data)
     await settledFrame()
     const start = performance.now()
     handle.destroy()
     times.push(performance.now() - start)
     await settledFrame()
+    fresh.remove()
   }
   return median(times)
 }
@@ -235,17 +349,104 @@ export async function measureHeapDelta(adapter: ChartAdapter, container: HTMLEle
   }
   const readHeap = () => memoryPerformance.memory?.usedJSHeapSize ?? 0
   await settledFrame()
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await sleep(100)
   const gcWindow = window as { gc?: () => void }
   gcWindow.gc?.()
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await sleep(100)
   const before = readHeap()
   const handle = adapter.create(container, data)
   await settledFrame()
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await sleep(500)
   gcWindow.gc?.()
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await sleep(100)
   const after = readHeap()
   handle.destroy()
   return after - before
+}
+
+// Retained heap per create→destroy cycle. One warm-up cycle absorbs one-off
+// module initialization, so a healthy library should converge near zero.
+export async function measureLeakPerCycle(adapter: ChartAdapter, container: HTMLElement, data: Bar[], cycles = 10): Promise<number | null> {
+  const memoryPerformance = performance as MemoryPerformance
+  if (memoryPerformance.memory === undefined) {
+    return null
+  }
+  const readHeap = () => memoryPerformance.memory?.usedJSHeapSize ?? 0
+  const gcWindow = window as { gc?: () => void }
+  const gc = async () => {
+    await sleep(100)
+    gcWindow.gc?.()
+    await sleep(100)
+  }
+
+  const warmup = adapter.create(container, data)
+  await settledFrame()
+  warmup.destroy()
+  await settledFrame()
+
+  await gc()
+  const before = readHeap()
+  for (let i = 0; i < cycles; i += 1) {
+    const handle = adapter.create(container, data)
+    await settledFrame()
+    handle.destroy()
+    await settledFrame()
+  }
+  await gc()
+  const after = readHeap()
+  return (after - before) / cycles
+}
+
+// Four live charts at once: total retained heap and FPS while panning the
+// first one with the other three still rendering in the background.
+export async function measureMultiChart(adapter: ChartAdapter, data: Bar[], chartCount = 4, durationMs = 5000): Promise<MultiChartStats> {
+  const memoryPerformance = performance as MemoryPerformance
+  const hasMemory = memoryPerformance.memory !== undefined
+  const readHeap = () => memoryPerformance.memory?.usedJSHeapSize ?? 0
+  const gcWindow = window as { gc?: () => void }
+
+  const host = document.createElement('div')
+  host.style.cssText = 'position:absolute;left:-9999px;top:0;'
+  document.body.appendChild(host)
+  const containers: HTMLElement[] = []
+  const handles: ChartHandle[] = []
+  try {
+    for (let i = 0; i < chartCount; i += 1) {
+      const element = document.createElement('div')
+      element.style.width = `${CONTAINER_WIDTH}px`
+      element.style.height = `${CONTAINER_HEIGHT}px`
+      host.appendChild(element)
+      containers.push(element)
+    }
+
+    let before = 0
+    if (hasMemory) {
+      await settledFrame()
+      await sleep(100)
+      gcWindow.gc?.()
+      await sleep(100)
+      before = readHeap()
+    }
+
+    for (const element of containers) {
+      handles.push(adapter.create(element, data))
+    }
+    await settledFrame()
+    await sleep(500)
+
+    let heap: number | null = null
+    if (hasMemory) {
+      gcWindow.gc?.()
+      await sleep(100)
+      heap = readHeap() - before
+    }
+
+    const stats = await drivePointerInput(containers[0], durationMs, 'panZoom')
+    return { heap, fps: stats.fps }
+  } finally {
+    for (const handle of handles) {
+      handle.destroy()
+    }
+    host.remove()
+  }
 }

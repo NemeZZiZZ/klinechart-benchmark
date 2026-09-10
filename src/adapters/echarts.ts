@@ -37,6 +37,14 @@ export const echartsAdapter: ChartAdapter = {
         candleData = next
         chart.setOption({ series: [{ data: next }] })
       },
+      prependBars(bars) {
+        candleData = [...toCandleData(bars), ...candleData]
+        indices = buildIndices(candleData.length)
+        chart.setOption(buildOption(indices, candleData), { replaceMerge: ['xAxis', 'series'] })
+      },
+      setVisibleAll() {
+        chart.setOption({ dataZoom: [{ type: 'inside', startValue: 0, endValue: candleData.length - 1 }] })
+      },
       resize(width, height) {
         chart.resize({ width, height })
       },
@@ -48,6 +56,13 @@ export const echartsAdapter: ChartAdapter = {
     function buildOption(indices: string[], candleData: CandleDatum[]): echarts.EChartsOption {
       return {
         animation: false,
+        // Cross-shaped axis pointer so synthetic hover does the same kind of
+        // crosshair tracking the other libraries do in fpsCrosshair.
+        tooltip: {
+          trigger: 'axis',
+          showContent: false,
+          axisPointer: { type: 'cross' }
+        },
         grid: { left: 60, right: 20, top: 20, bottom: 40 },
         xAxis: {
           type: 'category',

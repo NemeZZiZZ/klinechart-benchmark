@@ -32,14 +32,16 @@ export const lightweightChartsAdapter: ChartAdapter = {
       priceLineVisible: false,
       lastValueVisible: false
     })
-    series.setData(toLightweightBars(data))
+    let current = data
+    series.setData(toLightweightBars(current))
     chart.timeScale().setVisibleLogicalRange({
-      from: data.length - VISIBLE_BAR_COUNT,
-      to: data.length - 1
+      from: current.length - VISIBLE_BAR_COUNT,
+      to: current.length - 1
     })
 
     return {
       applyData(next) {
+        current = next
         series.setData(toLightweightBars(next))
         chart.timeScale().setVisibleLogicalRange({
           from: next.length - VISIBLE_BAR_COUNT,
@@ -54,6 +56,19 @@ export const lightweightChartsAdapter: ChartAdapter = {
           low: bar.low,
           close: bar.close
         })
+      },
+      // No incremental prepend API: series.update() only touches the last bar,
+      // so older history goes in through a full setData, view pinned to the tail.
+      prependBars(bars) {
+        current = [...bars, ...current]
+        series.setData(toLightweightBars(current))
+        chart.timeScale().setVisibleLogicalRange({
+          from: current.length - VISIBLE_BAR_COUNT,
+          to: current.length - 1
+        })
+      },
+      setVisibleAll() {
+        chart.timeScale().fitContent()
       },
       resize(width, height) {
         chart.applyOptions({ width, height })

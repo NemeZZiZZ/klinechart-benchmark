@@ -41,6 +41,20 @@ export const klinechartsAdapter: ChartAdapter = {
       updateLast(bar) {
         realtimeCallback?.(bar as KLineData)
       },
+      // klinecharts has no incremental prepend API in v10 — data flows through
+      // the loader, so prepending history means replacing the dataset.
+      prependBars(bars) {
+        currentData = [...bars, ...currentData]
+        chart.resetData()
+        chart.setBarSpace(container.clientWidth / VISIBLE_BAR_COUNT)
+        chart.scrollToRealTime()
+      },
+      setVisibleAll() {
+        // barSpaceLimit.min is 1px, so beyond ~800 bars this is the widest
+        // possible zoom, not the whole dataset.
+        chart.setBarSpace(1)
+        chart.scrollToDataIndex(0)
+      },
       resize(width, height) {
         container.style.width = `${width}px`
         container.style.height = `${height}px`
