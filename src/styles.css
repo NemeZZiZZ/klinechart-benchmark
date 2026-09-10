@@ -19,9 +19,18 @@ h1 {
   margin: 0 0 4px;
 }
 
+h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
 header p {
   color: #57606a;
   margin: 0 0 24px;
+}
+
+header p a {
+  color: #0969da;
 }
 
 #controls {
