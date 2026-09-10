@@ -1,11 +1,9 @@
 import { adapters } from './adapters'
-import { generateBars } from './data'
 import { DEFAULT_VOLUMES, runBenchmark, type BenchResults } from './runner'
 import { SCENARIO_NAMES, type ScenarioName } from './scenarios'
 
 const ALL_VOLUMES = DEFAULT_VOLUMES
 const DEFAULT_SELECTED = [5000, 10000, 20000, 50000]
-const PREVIEW_VOLUME = 5000
 
 const SCENARIO_LABELS: Record<ScenarioName, { label: string; unit: string; higherIsBetter: boolean }> = {
   initialRender: { label: 'Initial render', unit: 'ms (median of 5)', higherIsBetter: false },
@@ -17,9 +15,8 @@ const SCENARIO_LABELS: Record<ScenarioName, { label: string; unit: string; highe
 
 export function setupUI(): void {
   const controls = document.querySelector<HTMLElement>('#controls')
-  const charts = document.querySelector<HTMLElement>('#charts')
   const results = document.querySelector<HTMLElement>('#results')
-  if (controls === null || charts === null || results === null) {
+  if (controls === null || results === null) {
     throw new Error('benchmark page shell missing')
   }
 
@@ -43,29 +40,12 @@ export function setupUI(): void {
 
   const status = document.createElement('div')
   status.id = 'status'
+  status.textContent = 'Charts are measured offscreen in fixed 800×400 containers — see README for methodology.'
   controls.appendChild(status)
 
   runButton.addEventListener('click', () => {
     void runFromUI(status, runButton, results)
   })
-
-  renderPreview(charts)
-}
-
-function renderPreview(charts: HTMLElement): void {
-  charts.innerHTML = ''
-  const data = generateBars(PREVIEW_VOLUME)
-  for (const adapter of adapters) {
-    const card = document.createElement('div')
-    card.className = 'chart-card'
-    const title = document.createElement('h3')
-    title.textContent = adapter.name
-    const body = document.createElement('div')
-    body.className = 'chart-body'
-    card.append(title, body)
-    charts.appendChild(card)
-    adapter.create(body, data)
-  }
 }
 
 async function runFromUI(status: HTMLElement, runButton: HTMLButtonElement, results: HTMLElement): Promise<void> {

@@ -63,32 +63,6 @@ header p {
   min-height: 18px;
 }
 
-#charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  margin: 24px 0;
-}
-
-.chart-card {
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.chart-card h3 {
-  font-size: 14px;
-  margin: 0;
-  padding: 8px 12px;
-  border-bottom: 1px solid #d0d7de;
-  background: #f6f8fa;
-}
-
-.chart-card .chart-body {
-  width: 100%;
-  height: 320px;
-}
-
 #results h2 {
   font-size: 18px;
   margin: 24px 0 8px;
